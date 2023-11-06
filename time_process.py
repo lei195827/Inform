@@ -33,12 +33,13 @@ def extract_time(date_time):
 def process_csv_files_in_folder(folder_path):
     for filename in os.listdir(folder_path):
         if filename.endswith(".csv"):
+            print(filename)
             file_path = os.path.join(folder_path, filename)
             with open(file_path, 'r', encoding='utf-8') as file:
                 csv_reader = csv.DictReader(file)
                 data = list(csv_reader)
-                print()
             for row in data:
+                print(row)
                 if "Time" in row:
                     print(row["Time"])
                     row["Time"] = extract_time(row["Time"])
@@ -52,7 +53,7 @@ def process_csv_files_in_folder(folder_path):
 
 
 # 指定要处理的文件夹路径
-folder_path = "datas/new2"
+folder_path = "datas/demo3"
 process_csv_files_in_folder(folder_path)
 
 print("Time 列替代完成！")

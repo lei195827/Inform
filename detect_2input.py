@@ -9,31 +9,30 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from tqdm import tqdm
-from thop import profile
 from models import Informer
 import matplotlib.pyplot as plt
 
-x_stand = load('scaler/scaler_x_stand.joblib')
-y_stand = load('scaler/scaler_y_stand.joblib')
-input_folder = "datas/val"  # 文件夹路径
-output_folder = "result2"  # 结果保存文件夹路径
-model_path = "weights/informer_epoch_8.pth"
+x_stand = load('scaler/scaler_x_stand_2input.joblib')
+y_stand = load('scaler/scaler_y_stand_2input.joblib')
+input_folder = "datas/demo3"  # 文件夹路径
+output_folder = "result4"  # 结果保存文件夹路径
+model_path = "weights/2informer_epoch_4.pth"
 s_len = 120
-enc_in = 8
+enc_in = 2
 pre_len = 60
 batch_size = 256
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
-def create_data(datas, s_len=120, pre_len=60):
+def create_data(datas, pre_len=60, s_len=120):
     values = []
     labels = []
 
     lens = datas.shape[0]
     datas = datas.values
     for index in range(0, lens - pre_len - s_len):
-        value = datas[index:index + s_len, [0, 1, 2, 3, 4, 5, 6, 7, 9]]
-        label = datas[index + s_len - pre_len:index + s_len + pre_len, [0, 8]]
+        value = datas[index:index + s_len, [0, 1, 2]]
+        label = datas[index + s_len - pre_len:index + s_len + pre_len, [0, 3]]
 
         values.append(value)
         labels.append(label)
@@ -43,9 +42,10 @@ def create_data(datas, s_len=120, pre_len=60):
 
 def read_test_data(file_path):
     datas = pd.read_csv(file_path)
-    # feature_names = ['序号', "出口SO2控制设定值", "脱硫岛入口烟气SO2折算浓度", "脱硫岛入口烟气干标流量",
-    #                  "Unnamed: 0", "吸收塔床层压降", "吸收塔入口烟气温度", "吸收塔出口烟气温度"]
-    feature_names = ['序号', "Unnamed: 0"]
+    feature_names = ['序号', "出口SO2控制设定值", "脱硫岛入口烟气SO2折算浓度", "脱硫岛入口烟气干标流量",
+                     "Unnamed: 0", "吸收塔床层压降", "吸收塔入口烟气温度", "吸收塔出口烟气温度"]
+    # datas.pop("Unnamed: 0")
+    # datas.pop("序号")
     for feature_name in feature_names:
         datas.pop(str(feature_name))
     datas.fillna(0)
@@ -126,7 +126,7 @@ def insert_predictions_to_csv(file_path, n, original_predictions):
 
     # 构造新的文件名
     new_file_name = f"{file_name}_with_predictions.csv"
-    new_file_name = os.path.join("result2/csv", new_file_name)
+    new_file_name = os.path.join("result3/csv", new_file_name)
 
     # 保存修改后的数据到新的 CSV 文件
     df.to_csv(new_file_name, index=False)
@@ -146,19 +146,10 @@ def predict_and_visualize(file_path="datas/demo/f(t) 趋势视图_样式.csv", m
     model.eval()
     model.to(device)
 
-    # For demonstration, taking a single batch of data for FLOPs calculation
-    x_sample, y_sample, xt_sample, yt_sample = next(iter(test_data))
-    x_sample, xt_sample, yt_sample = x_sample.to(device), xt_sample.to(device), yt_sample.to(device)
-    dec_y_sample = torch.cat([y_sample[:, :pre_len], torch.zeros_like(y_sample)[:, pre_len:]], dim=1).to(device)
-
-    # Calculating and printing FLOPs before entering the prediction loop
-    macs, params = profile(model, inputs=(x_sample, xt_sample, dec_y_sample, yt_sample), verbose=False)
-    print(f"Total FLOPs: {macs * 2:.2f}")
-
     predictions = []
 
     with torch.no_grad():
-        for x, y, xt, yt in test_data:
+        for x, y, xt, yt in tqdm(test_data):
             mask = torch.zeros_like(y)[:, pre_len:].to(device)
 
             x, y, xt, yt = x.to(device), y.to(device), xt.to(device), yt.to(device)
@@ -198,6 +189,7 @@ def predict_and_visualize(file_path="datas/demo/f(t) 趋势视图_样式.csv", m
     plt.figtext(0.95, 0.95, f'Average Loss: {average_loss:.4f}', ha='right', va='top')
     plt.savefig(save_file_name)
     plt.close()
+
 
 
 def process_directory(input_folder, output_folder, model_path):

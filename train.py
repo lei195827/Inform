@@ -1,6 +1,6 @@
 import os
-
 import torch
+from joblib import dump
 from torch import nn
 from torch.utils.data import DataLoader, Dataset
 import pandas as pd
@@ -13,23 +13,25 @@ from models import Informer
 train_size = 0.85
 x_stand = StandardScaler()
 y_stand = StandardScaler()
-s_len = 180
+s_len = 120
+enc_in = 2
 pre_len = 60
 batch_size = 150
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 lr = 5e-5
 epochs = 10
+folder_path="datas/new2"
 
 
-def create_data(datas):
+def create_data(datas,pre_len=60,s_len=120):
     values = []
     labels = []
 
     lens = datas.shape[0]
     datas = datas.values
     for index in range(0, lens - pre_len - s_len):
-        value = datas[index:index + s_len, [0, 1, 2, 3, 4, 5, 6, 7, 9]]
-        label = datas[index + s_len - pre_len:index + s_len + pre_len, [0, 8]]
+        value = datas[index:index + s_len, [0, 1, 2]]
+        label = datas[index + s_len - pre_len:index + s_len + pre_len, [0, 3]]
 
         values.append(value)
         labels.append(label)
@@ -47,9 +49,7 @@ def read_data():
     ys = datas.values[:, [8]]  # label
 
     x_stand.fit(xs)
-    # y_stand.fit(ys[:, None])
     y_stand.fit(ys)
-
     values, labels = create_data(datas)
 
     train_x, test_x, train_y, test_y = train_test_split(values, labels, train_size=train_size)
@@ -66,22 +66,27 @@ def read_data_from_folder(folder_path="datas/demo", train_size=0.8):
             print(f"filename:{filename}")
             file_path = os.path.join(folder_path, filename)
             datas = pd.read_csv(file_path)
-            datas.pop("Unnamed: 0")
-            datas.pop("序号")
+            feature_names = ['序号', "出口SO2控制设定值", "脱硫岛入口烟气SO2折算浓度", "脱硫岛入口烟气干标流量",
+                             "Unnamed: 0", "吸收塔床层压降", "吸收塔入口烟气温度", "吸收塔出口烟气温度"]
+            # datas.pop("Unnamed: 0")
+            # datas.pop("序号")
+            for feature_name in feature_names:
+                datas.pop(str(feature_name))
             datas.fillna(0, inplace=True)
             all_datas.append(datas)
 
     # 将所有CSV数据合并为一个DataFrame
     merged_datas = pd.concat(all_datas, ignore_index=True)
-    print(f"merged_datas:{merged_datas.shape}")
-
-    xs = merged_datas.values[:, [1, 2, 3, 4, 5, 6, 7, 9]]
-    ys = merged_datas.values[:, [8]]
-
+    print(f"merged_datas.shape:{merged_datas.shape}")
+    print(f"merged_datas:{merged_datas.head(5)}")
+    xs = merged_datas.values[:, [1, 2]]
+    ys = merged_datas.values[:, [3]]
 
     x_stand.fit(xs)
     # y_stand.fit(ys[:, None])
     y_stand.fit(ys)
+    dump(x_stand, './scaler/scaler_x_stand_2input.joblib')
+    dump(y_stand, './scaler/scaler_y_stand_2input.joblib')
 
     values, labels = create_data(merged_datas)
 
@@ -149,7 +154,7 @@ class AmaData(Dataset):
 
 
 def train():
-    train_x, test_x, train_y, test_y = read_data_from_folder(folder_path="datas/demo3")
+    train_x, test_x, train_y, test_y = read_data_from_folder(folder_path=folder_path)
 
     train_data = AmaData(train_x, train_y)
     train_data = DataLoader(train_data, shuffle=True, batch_size=batch_size)
@@ -157,7 +162,7 @@ def train():
     test_data = AmaData(test_x, test_y)
     test_data = DataLoader(test_data, shuffle=True, batch_size=batch_size)
 
-    model = Informer(out_len=pre_len)
+    model = Informer(out_len=pre_len, enc_in=enc_in)
     model.train()
     model.to(device)
 
@@ -173,9 +178,9 @@ def train():
             dec_y = torch.cat([y[:, :pre_len], mask], dim=1)
 
             logits = model(x, xt, dec_y, yt)
-            print(f"logits.shape:{logits.shape}")
-            print(f"y.shape:{y.shape}")
-            print(f"y[:, pre_len:]:{y[:, pre_len:].shape}")
+            # print(f"logits.shape:{logits.shape}")
+            # print(f"y.shape:{y.shape}")
+            # print(f"y[:, pre_len:]:{y[:, pre_len:].shape}")
             loss = loss_fc(logits, y[:, pre_len:])
 
             optimizer.zero_grad()
